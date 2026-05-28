@@ -72,6 +72,13 @@
 
   /* UPLOAD AREA */
   .upload-section { background: white; border: 1px solid #e8e8e8; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .enr-change { display:inline-flex; align-items:center; gap:2px; font-size:11px; font-weight:500; margin-left:5px; }
+  .enr-up { color:#27500A; }
+  .enr-down { color:#A32D2D; }
+  .enr-neutral { color:#aaa; }
+  .upload-history { margin-top:10px; font-size:11px; color:#888; }
+  .upload-history-item { display:flex; align-items:center; gap:8px; padding:3px 0; border-bottom:0.5px solid #f0f0f0; }
+  .upload-history-item:last-child { border-bottom:none; }
   .import-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #aaa; cursor: pointer; user-select: none; margin-bottom: 12px; width: fit-content; }
   .import-toggle:hover { color: #666; }
   .import-toggle .arrow { font-size: 10px; transition: transform 0.2s; }
@@ -219,6 +226,7 @@
     <div style="display:flex;align-items:center;gap:8px">
       <span id="access-badge" class="access-badge"></span>
       <span id="last-updated" style="font-size:11px;color:#aaa"></span>
+      <span id="last-upload-badge" style="font-size:11px;color:#aaa"></span>
       <button class="logout-btn" onclick="exportExcel()" title="Export to Excel">⬇ Excel</button>
       <button class="logout-btn" onclick="exportPDF()" title="Export to PDF">⬇ PDF</button>
       <button class="logout-btn" onclick="showSummary()" title="Generate summary report" id="summary-btn" style="display:none">📋 My Summary</button>
@@ -310,6 +318,7 @@
         <div>Drop a CSV or Excel file here, or click to browse</div>
       </div>
       <div class="upload-result" id="upload-result"></div>
+      <div class="upload-history" id="upload-history"></div>
     </div>
     </div>
 
@@ -423,6 +432,7 @@ let airtableConfig = {
   table: "Classes",
 };
 let recordIdMap = {}; // classCode -> airtable record id
+let uploadHistory = JSON.parse(localStorage.getItem("ussc_upload_history") || "[]"); // [{date, count, type}]
 
 // ── AUTH ────────────────────────────────────────────────────────
 function doLogin() {
@@ -481,6 +491,7 @@ function saveSettings() {
   closeSettings();
   document.getElementById("config-banner").style.display = "none";
   loadFromAirtable();
+  renderUploadHistory();
 }
 
 // ── AIRTABLE API ─────────────────────────────────────────────────
@@ -514,6 +525,7 @@ async function loadFromAirtable() {
       "Camp Status": r.fields["Camp Status"] ? String(r.fields["Camp Status"]) : "",
       "Camp Notes": r.fields["Camp Notes"] || "",
       "Camp URL": r.fields["Camp URL"] || "",
+      "Previous Enrollment": r.fields["Previous Enrollment"] || null,
     }));
 
     recordIdMap = {};
@@ -703,7 +715,7 @@ function renderTable() {
         </td>
         <td></td>
         <td style="font-size:12px">${formatDate(r0["Begin Date"])}</td>
-        <td style="text-align:right;font-weight:500;color:${groupBelow?"#BA7517":"#185FA5"}">${totalEnr}</td>
+        <td style="text-align:right;font-weight:500;color:${groupBelow?"#BA7517":"#185FA5"}">${totalEnr}${(()=>{const gd=group.reduce((s,r)=>{const p=r["Previous Enrollment"];return s+(p!==null&&p!==undefined?(r["Enrollment"]-p):0);},0);const ap=group.some(r=>r["Previous Enrollment"]!==null&&r["Previous Enrollment"]!==undefined);if(!ap)return "";if(gd>0)return '<span class="enr-change enr-up">&#8593;'+gd+'</span>';if(gd<0)return '<span class="enr-change enr-down">&#8595;'+Math.abs(gd)+'</span>';return '<span class="enr-change enr-neutral">&#8212;</span>';})()}</td>
         <td>${allCancelled ? "" : groupBelow ? '<span class="gap-badge">needs ' + groupGap + '</span>' : '<span style="font-size:11px;color:#aaa">—</span>'}</td>
         <td>${allCancelled ? "" : urg}</td>
         <td></td>
@@ -736,7 +748,16 @@ function renderTable() {
         <td class="wrap-cell" style="max-width:220px;white-space:normal">${r["Class Name"]}</td>
         <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis" title="${r["Director"]}">${r["Director"]}</td>
         <td>${formatDate(r["Begin Date"])}</td>
-        <td style="text-align:right;font-weight:500;color:${isBelow&&!isCancelled?"#BA7517":"inherit"}">${enr}</td>
+        <td style="text-align:right;font-weight:500;color:${isBelow&&!isCancelled?"#BA7517":"inherit"}">
+          ${enr}${(() => {
+            const prev = r["Previous Enrollment"];
+            if (prev === null || prev === undefined) return "";
+            const diff = enr - prev;
+            if (diff > 0) return '<span class="enr-change enr-up">&#8593;' + diff + '</span>';
+            if (diff < 0) return '<span class="enr-change enr-down">&#8595;' + Math.abs(diff) + '</span>';
+            return '<span class="enr-change enr-neutral">&#8212;</span>';
+          })()}
+        </td>
         <td>${isCancelled ? "" : scGap}</td>
         <td>${isCancelled ? "" : scUrgency}</td>
         <td style="min-width:110px">
@@ -946,6 +967,43 @@ async function parseAndImport(rows) {
   if (!hasClassCode) { showUploadResult("error", 'File must have a "Class Code" column.'); return; }
   let updated = 0, created = 0, errors = [];
   const toUpdate = [], toCreate = [];
+  // Save current enrollment as Previous Enrollment in Airtable before updating
+  if (uploadMode === "enrollment" || uploadMode === "full") {
+    const uploadDate = new Date().toISOString();
+    const prevUpdates = [];
+    rows.forEach(row => {
+      const code = get(row, "Class Code").trim();
+      const enrVal = get(row, "Enrollment");
+      if (code && enrVal !== "") {
+        const rec = records.find(r => r["Class Code"] === code);
+        if (rec && rec["Enrollment"] !== undefined) {
+          prevUpdates.push({ id: rec.id, fields: { "Previous Enrollment": rec["Enrollment"] } });
+        }
+      }
+    });
+    // Batch save previous enrollment to Airtable
+    const tableName = encodeURIComponent(airtableConfig.table || "Classes");
+    for (let i = 0; i < prevUpdates.length; i += 10) {
+      const batch = prevUpdates.slice(i, i + 10);
+      try {
+        await fetch(`https://api.airtable.com/v0/${airtableConfig.base}/${tableName}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${airtableConfig.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ records: batch }),
+        });
+        batch.forEach(b => {
+          const rec = records.find(r => r.id === b.id);
+          if (rec) rec["Previous Enrollment"] = b.fields["Previous Enrollment"];
+        });
+      } catch(e) { console.error("Error saving previous enrollment:", e); }
+    }
+    // Add to upload history (still use localStorage for history display)
+    const historyEntry = { date: uploadDate, count: rows.filter(r=>get(r,"Class Code")).length, type: uploadMode };
+    uploadHistory.unshift(historyEntry);
+    uploadHistory = uploadHistory.slice(0, 5);
+    localStorage.setItem("ussc_upload_history", JSON.stringify(uploadHistory));
+  }
+
   for (const row of rows) {
     const code = get(row, "Class Code").trim();
     if (!code) continue;
@@ -976,7 +1034,7 @@ async function parseAndImport(rows) {
       const data = await res.json();
       data.records.forEach(r => {
         recordIdMap[r.fields["Class Code"]] = r.id;
-        records.push({ id: r.id, "Class Code": r.fields["Class Code"]||"", "Camp Code": r.fields["Camp Code"]||"", "Class Name": r.fields["Class Name"]||"", "Sport": r.fields["Sport"]||"", "Director": r.fields["Director"]||"", "Sport Manager": r.fields["Sport Manager"]||"", "Begin Date": r.fields["Begin Date"]||"", "Min Viable": r.fields["Min Viable"]||0, "Enrollment": r.fields["Enrollment"]||0, "Camp Status": r.fields["Camp Status"] ? String(r.fields["Camp Status"]) : "", "Camp Notes": r.fields["Camp Notes"]||"", "Camp URL": r.fields["Camp URL"]||"" });
+        records.push({ id: r.id, "Class Code": r.fields["Class Code"]||"", "Camp Code": r.fields["Camp Code"]||"", "Class Name": r.fields["Class Name"]||"", "Sport": r.fields["Sport"]||"", "Director": r.fields["Director"]||"", "Sport Manager": r.fields["Sport Manager"]||"", "Begin Date": r.fields["Begin Date"]||"", "Min Viable": r.fields["Min Viable"]||0, "Enrollment": r.fields["Enrollment"]||0, "Camp Status": r.fields["Camp Status"] ? String(r.fields["Camp Status"]) : "", "Camp Notes": r.fields["Camp Notes"]||"", "Camp URL": r.fields["Camp URL"]||"", "Previous Enrollment": r.fields["Previous Enrollment"]||null });
         created++;
       });
     } catch(e) { errors.push("Create error: " + e.message); }
@@ -1008,6 +1066,34 @@ function showUploadResult(type, msg) {
   el.textContent = msg;
   el.style.display = "block";
   setTimeout(() => el.style.display = "none", 8000);
+  renderUploadHistory();
+}
+
+function renderUploadHistory() {
+  // Update topbar badge
+  const badge = document.getElementById("last-upload-badge");
+  if (badge && uploadHistory.length > 0) {
+    const last = new Date(uploadHistory[0].date);
+    const dateStr = last.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+    const timeStr = last.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    badge.textContent = "Last upload: " + dateStr + " " + timeStr;
+  }
+  const el = document.getElementById("upload-history");
+  if (!el) return;
+  if (!uploadHistory.length) { el.innerHTML = ""; return; }
+  const rows = uploadHistory.map((h, i) => {
+    const d = new Date(h.date);
+    const dateStr = d.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+    const timeStr = d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+    const typeLabel = h.type === "url" ? "URL update" : h.type === "full" ? "Full load" : "Enrollment update";
+    return `<div class="upload-history-item">
+      <span style="color:#185FA5;font-weight:500">${i===0?"Latest: ":""}</span>
+      <span>${typeLabel}</span>
+      <span style="color:#555">${dateStr} at ${timeStr}</span>
+      <span style="color:#aaa">(${h.count} classes)</span>
+    </div>`;
+  }).join("");
+  el.innerHTML = `<div style="font-size:11px;font-weight:500;color:#555;margin-bottom:4px;margin-top:8px">Upload history</div>${rows}`;
 }
 
 // ── IMPORT TOGGLE ────────────────────────────────────────────────
