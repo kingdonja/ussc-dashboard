@@ -538,6 +538,14 @@ function getFiltered() {
     if (manager && r["Sport Manager"] !== manager) return false;
     if (statusFilters.length > 0 && !statusFilters.map(s=>s.toLowerCase()).includes((r["Camp Status"]||"").toLowerCase())) return false;
     if (q && !(r["Class Code"]+r["Camp Code"]+r["Class Name"]+r["Director"]+r["Sport Manager"]+r["Sport"]).toLowerCase().includes(q)) return false;
+    const hidePast = document.getElementById("hide-past") && document.getElementById("hide-past").checked;
+    if (hidePast && r["Begin Date"]) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const parts = r["Begin Date"].split("-");
+      const campDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+      if (campDate < today) return false;
+    }
     return true;
   });
 }
