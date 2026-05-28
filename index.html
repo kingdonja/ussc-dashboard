@@ -6,6 +6,7 @@
 <title>Baseball+ At Risk Camps Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #f5f5f3; color: #1a1a1a; min-height: 100vh; }
@@ -136,6 +137,23 @@
   .ai-draft-btn { padding:2px 8px; border-radius:6px; border:1px solid #B5D4F4; background:#E6F1FB; color:#0C447C; font-size:11px; cursor:pointer; white-space:nowrap; margin-left:8px; }
   .ai-draft-btn:hover { background:#C8E0F5; }
 
+  /* SUMMARY MODAL */
+  .summary-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:300; align-items:center; justify-content:center; }
+  .summary-modal-overlay.open { display:flex; }
+  .summary-modal { background:white; border-radius:12px; width:680px; max-width:95vw; max-height:90vh; display:flex; flex-direction:column; border:1px solid #e0e0e0; overflow:hidden; }
+  .summary-modal-header { padding:16px 20px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+  .summary-modal-body { padding:16px 20px; flex:1; overflow-y:auto; }
+  .summary-output { width:100%; min-height:360px; padding:14px; border:1px solid #ddd; border-radius:8px; font-size:13px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; line-height:1.7; resize:vertical; color:#1a1a1a; background:#f8f9fb; }
+  .summary-modal-footer { padding:12px 20px; border-top:1px solid #eee; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+
+  /* PRINT / PDF STYLES */
+  @media print {
+    body * { visibility: hidden; }
+    #print-area, #print-area * { visibility: visible; }
+    #print-area { position: fixed; left: 0; top: 0; width: 100%; }
+    .topbar, .toolbar, #upload-wrapper, .summary-row { display: none !important; }
+  }
+
   /* AI EMAIL MODAL */
   .ai-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:300; align-items:center; justify-content:center; }
   .ai-modal-overlay.open { display:flex; }
@@ -198,9 +216,12 @@
       <div class="topbar-divider"></div>
       <div class="topbar-title">Baseball+ At Risk Camps Dashboard</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px">
       <span id="access-badge" class="access-badge"></span>
       <span id="last-updated" style="font-size:11px;color:#aaa"></span>
+      <button class="logout-btn" onclick="exportExcel()" title="Export to Excel">⬇ Excel</button>
+      <button class="logout-btn" onclick="exportPDF()" title="Export to PDF">⬇ PDF</button>
+      <button class="logout-btn" onclick="showSummary()" title="Generate summary report" id="summary-btn" style="display:none">📋 My Summary</button>
       <button class="logout-btn" onclick="showSettings()" id="settings-btn" style="display:none">⚙ Settings</button>
       <button class="logout-btn" onclick="doLogout()">Sign out</button>
     </div>
@@ -318,6 +339,26 @@
   </div>
 </div>
 
+<!-- SUMMARY MODAL -->
+<div class="summary-modal-overlay" id="summary-modal">
+  <div class="summary-modal">
+    <div class="summary-modal-header">
+      <div style="font-size:14px;font-weight:500" id="summary-modal-title">My Camp Summary</div>
+      <button class="ai-modal-close" onclick="closeSummary()">×</button>
+    </div>
+    <div class="summary-modal-body">
+      <div style="font-size:12px;color:#666;margin-bottom:12px;padding:8px 12px;background:#F8F9FB;border-radius:7px;border:1px solid #e8e8e8">
+        Your weekly summary report. Click <strong>Copy to clipboard</strong> and paste into an email to yourself or share with your team.
+      </div>
+      <textarea class="summary-output" id="summary-output" readonly placeholder="Generating summary..."></textarea>
+    </div>
+    <div class="summary-modal-footer">
+      <div style="font-size:11px;color:#888" id="summary-meta"></div>
+      <button class="copy-btn" id="summary-copy-btn" onclick="copySummary()">Copy to clipboard</button>
+    </div>
+  </div>
+</div>
+
 <!-- AI EMAIL MODAL -->
 <div class="ai-modal-overlay" id="ai-modal">
   <div class="ai-modal">
@@ -401,6 +442,7 @@ function launchApp() {
   if (accessLevel === "editor") {
     document.getElementById("settings-btn").style.display = "";
     document.getElementById("upload-wrapper").style.display = "";
+    document.getElementById("summary-btn").style.display = "";
   }
   // Viewers get read-only token automatically
   if (accessLevel === "viewer" && !airtableConfig.token) {
@@ -1099,6 +1141,369 @@ function copyPrompt() {
 // Close modal on overlay click
 document.getElementById("ai-modal").addEventListener("click", function(e) {
   if (e.target === this) closeAiModal();
+});
+
+// ── EXCEL EXPORT ─────────────────────────────────────────────────
+function exportExcel() {
+  const filtered = getFiltered();
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // Build flat rows including group context
+  const rows = [];
+  const groupMap = {};
+  filtered.forEach(r => {
+    const key = r["Camp Code"] + "|" + r["Begin Date"];
+    if (!groupMap[key]) groupMap[key] = [];
+    groupMap[key].push(r);
+  });
+
+  // Sort same as current table
+  const sorted = [...filtered].sort((a,b) => {
+    let av = a[sortCol]||"", bv = b[sortCol]||"";
+    if (["Enrollment","Min Viable"].includes(sortCol)) { av = Number(av)||0; bv = Number(bv)||0; }
+    else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase(); }
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+
+  const wsData = [["Sport","Class Code","Camp Code","Class Name","Director","Sport Manager","Begin Date","Min Viable","Enrollment","Gap","Camp Status","Camp Notes","Camp URL"]];
+  sorted.forEach(r => {
+    const groupKey = r["Camp Code"] + "|" + r["Begin Date"];
+    const group = groupMap[groupKey] || [r];
+    const totalEnr = group.reduce((s,x)=>s+x["Enrollment"],0);
+    const totalMin = group.reduce((s,x)=>s+x["Min Viable"],0);
+    const effectiveMin = totalMin > 0 ? totalMin : (group.length * (parseInt(document.getElementById("threshold").value)||25));
+    const gap = Math.max(0, (r["Min Viable"]||parseInt(document.getElementById("threshold").value)||25) - r["Enrollment"]);
+    wsData.push([
+      r["Sport"], r["Class Code"], r["Camp Code"], r["Class Name"],
+      r["Director"], r["Sport Manager"], r["Begin Date"],
+      r["Min Viable"]||"", r["Enrollment"], gap > 0 ? gap : "",
+      r["Camp Status"]||"", r["Camp Notes"]||"", r["Camp URL"]||""
+    ]);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  // Column widths
+  ws["!cols"] = [
+    {wch:10},{wch:16},{wch:12},{wch:40},{wch:22},{wch:16},
+    {wch:12},{wch:10},{wch:8},{wch:8},{wch:12},{wch:40},{wch:45}
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, "At Risk Camps");
+  const date = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `USSC_AtRisk_Camps_${date}.xlsx`);
+}
+
+// ── PDF EXPORT ───────────────────────────────────────────────────
+function exportPDF() {
+  const filtered = getFiltered();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const threshold = parseInt(document.getElementById("threshold").value)||25;
+  const managerFilter = document.getElementById("manager-filter").value;
+  const sportFilter = document.getElementById("sport-filter").value;
+  const date = new Date().toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+
+  // Build group map
+  const groupMap = {};
+  const groupOrder = [];
+  filtered.forEach(r => {
+    const key = r["Camp Code"] + "|" + r["Begin Date"];
+    if (!groupMap[key]) { groupMap[key] = []; groupOrder.push(key); }
+    groupMap[key].push(r);
+  });
+
+  // Summary stats
+  const total = filtered.length;
+  const viable = filtered.filter(r=>r["Camp Status"]==="Viable").length;
+  const atRisk = filtered.filter(r=>r["Camp Status"]==="At risk").length;
+  const cancelled = filtered.filter(r=>r["Camp Status"]==="Cancelled").length;
+  const pct = n => total > 0 ? Math.round(n/total*100) : 0;
+
+  // Sort
+  const sorted = [...filtered].sort((a,b) => {
+    let av = a[sortCol]||"", bv = b[sortCol]||"";
+    if (["Enrollment","Min Viable"].includes(sortCol)) { av=Number(av)||0; bv=Number(bv)||0; }
+    else { av=String(av).toLowerCase(); bv=String(bv).toLowerCase(); }
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+
+  let tableRows = "";
+  sorted.forEach(r => {
+    const groupKey = r["Camp Code"] + "|" + r["Begin Date"];
+    const group = groupMap[groupKey] || [r];
+    const totalMin = group.reduce((s,x)=>s+x["Min Viable"],0);
+    const effectiveMin = totalMin > 0 ? totalMin : (group.length * threshold);
+    const groupTotalEnr = group.reduce((s,x)=>s+x["Enrollment"],0);
+    const isBelow = groupTotalEnr < effectiveMin;
+    const status = r["Camp Status"]||"";
+    const isCancelled = status==="Cancelled";
+    const isPast = r["Begin Date"] && new Date(r["Begin Date"]+"T00:00:00") < today;
+    const gap = Math.max(0,(r["Min Viable"]||threshold)-r["Enrollment"]);
+
+    const statusColor = status==="Viable"?"#27500A":status==="At risk"?"#854F0B":status==="Cancelled"?"#791F1F":"#888";
+    const statusBg = status==="Viable"?"#EAF3DE":status==="At risk"?"#FAEEDA":status==="Cancelled"?"#FCEBEB":"#f5f5f3";
+    const rowBg = isCancelled?"#fff0f0":isBelow&&!isCancelled?"#FFF8EC":"#ffffff";
+    const opacity = isCancelled||isPast?"0.6":"1";
+
+    tableRows += `<tr style="background:${rowBg};opacity:${opacity}">
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-family:monospace;font-size:11px">${r["Class Code"]}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px;max-width:180px">${r["Class Name"]}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px">${r["Director"]}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px">${r["Sport Manager"]}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px">${formatDate(r["Begin Date"])}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px;text-align:center">${r["Min Viable"]||"—"}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px;text-align:center;font-weight:500;color:${isBelow?"#BA7517":"inherit"}">${r["Enrollment"]}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px;text-align:center">${gap>0?gap:"—"}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:11px"><span style="background:${statusBg};color:${statusColor};padding:2px 7px;border-radius:10px;font-size:10px;font-weight:500">${status||"—"}</span></td>
+      <td style="padding:6px 8px;border-bottom:1px solid #f0f0f0;font-size:10px;color:#666;max-width:160px">${r["Camp Notes"]||""}</td>
+    </tr>`;
+  });
+
+  const filterDesc = [
+    managerFilter ? `Manager: ${managerFilter}` : "",
+    sportFilter ? `Sport: ${sportFilter}` : "",
+    statusFilters.length > 0 ? `Status: ${statusFilters.join(", ")||"Unset"}` : "",
+  ].filter(Boolean).join(" · ") || "All camps";
+
+  const printHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>USSC At Risk Camps Report</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #1a1a1a; margin: 0; padding: 20px; }
+  .report-header { margin-bottom: 20px; }
+  .report-title { font-size: 20px; font-weight: bold; color: #185FA5; margin-bottom: 4px; }
+  .report-sub { font-size: 13px; color: #555; margin-bottom: 2px; }
+  .report-meta { font-size: 11px; color: #888; }
+  .summary-cards { display: flex; gap: 12px; margin-bottom: 20px; }
+  .scard { background: #f5f5f3; border-radius: 6px; padding: 10px 16px; min-width: 100px; }
+  .scard-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .scard-val { font-size: 20px; font-weight: bold; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #185FA5; color: white; padding: 7px 8px; text-align: left; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+  @page { size: landscape; margin: 15mm; }
+</style>
+</head>
+<body>
+<div class="report-header">
+  <div class="report-title">Baseball+ At Risk Camps Dashboard</div>
+  <div class="report-sub">Export: ${filterDesc}</div>
+  <div class="report-meta">Generated ${date} · ${total} classes</div>
+</div>
+<div class="summary-cards">
+  <div class="scard"><div class="scard-label">Total classes</div><div class="scard-val">${total}</div></div>
+  <div class="scard"><div class="scard-label">Viable</div><div class="scard-val" style="color:#27500A">${viable} (${pct(viable)}%)</div></div>
+  <div class="scard"><div class="scard-label">At risk</div><div class="scard-val" style="color:#A32D2D">${atRisk} (${pct(atRisk)}%)</div></div>
+  <div class="scard"><div class="scard-label">Cancelled</div><div class="scard-val" style="color:#791F1F">${cancelled} (${pct(cancelled)}%)</div></div>
+</div>
+<table>
+  <thead><tr>
+    <th>Class Code</th><th>Class Name</th><th>Director</th><th>Manager</th>
+    <th>Begin Date</th><th>Min</th><th>Enr</th><th>Gap</th><th>Status</th><th>Notes</th>
+  </tr></thead>
+  <tbody>${tableRows}</tbody>
+</table>
+</body>
+</html>`;
+
+  const printWindow = window.open("", "_blank");
+  printWindow.document.write(printHtml);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => { printWindow.print(); }, 500);
+}
+
+// ── SUMMARY REPORT ───────────────────────────────────────────────
+function showSummary() {
+  const manager = document.getElementById("manager-filter").value;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const threshold = parseInt(document.getElementById("threshold").value)||25;
+  const now = new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"});
+
+  // Get all records for this manager (ignore other filters for summary)
+  const myRecords = manager
+    ? records.filter(r => r["Sport Manager"] === manager)
+    : records;
+
+  if (myRecords.length === 0) {
+    document.getElementById("summary-output").value = "No camps found. Make sure you have filtered to your name using the Manager dropdown before generating your summary.";
+    document.getElementById("summary-modal").classList.add("open");
+    return;
+  }
+
+  // Build group map
+  const groupMap = {};
+  myRecords.forEach(r => {
+    const key = r["Camp Code"] + "|" + r["Begin Date"];
+    if (!groupMap[key]) groupMap[key] = [];
+    groupMap[key].push(r);
+  });
+
+  const total = myRecords.length;
+  const viable = myRecords.filter(r=>r["Camp Status"]==="Viable").length;
+  const atRisk = myRecords.filter(r=>r["Camp Status"]==="At risk").length;
+  const cancelled = myRecords.filter(r=>r["Camp Status"]==="Cancelled").length;
+  const unset = myRecords.filter(r=>!r["Camp Status"]).length;
+  const pct = n => total > 0 ? Math.round(n/total*100) : 0;
+
+  // At risk camps sorted by urgency (most urgent first)
+  const atRiskCamps = [];
+  const seen = new Set();
+  myRecords.filter(r=>r["Camp Status"]==="At risk").forEach(r => {
+    const key = r["Camp Code"] + "|" + r["Begin Date"];
+    if (seen.has(key)) return;
+    seen.add(key);
+    const group = groupMap[key] || [r];
+    const totalEnr = group.reduce((s,x)=>s+x["Enrollment"],0);
+    const totalMin = group.reduce((s,x)=>s+x["Min Viable"],0);
+    const effectiveMin = totalMin > 0 ? totalMin : (group.length * threshold);
+    const gap = Math.max(0, effectiveMin - totalEnr);
+    const campDate = r["Begin Date"] ? new Date(r["Begin Date"]+"T00:00:00") : null;
+    const daysUntil = campDate ? Math.ceil((campDate - today)/86400000) : null;
+    const deadlineDays = daysUntil !== null ? daysUntil - 14 : null;
+    atRiskCamps.push({ name: r["Class Name"], code: r["Camp Code"], director: r["Director"], date: r["Begin Date"], totalEnr, effectiveMin, gap, daysUntil, deadlineDays, classes: group.length });
+  });
+  atRiskCamps.sort((a,b) => (a.deadlineDays??999) - (b.deadlineDays??999));
+
+  // Below threshold camps (not already at risk)
+  const belowCamps = [];
+  const seenBelow = new Set();
+  myRecords.filter(r=>r["Camp Status"]!=="At risk"&&r["Camp Status"]!=="Cancelled"&&r["Camp Status"]!=="Viable").forEach(r => {
+    const key = r["Camp Code"] + "|" + r["Begin Date"];
+    if (seenBelow.has(key)) return;
+    const group = groupMap[key] || [r];
+    const totalEnr = group.reduce((s,x)=>s+x["Enrollment"],0);
+    const totalMin = group.reduce((s,x)=>s+x["Min Viable"],0);
+    const effectiveMin = totalMin > 0 ? totalMin : (group.length * threshold);
+    if (totalEnr < effectiveMin) {
+      seenBelow.add(key);
+      belowCamps.push({ name: r["Class Name"], code: r["Camp Code"], director: r["Director"], date: r["Begin Date"], totalEnr, effectiveMin });
+    }
+  });
+
+  // Overdue decisions
+  const overdue = atRiskCamps.filter(c => c.deadlineDays !== null && c.deadlineDays <= 0 && c.daysUntil > 0);
+  const urgentThisWeek = atRiskCamps.filter(c => c.deadlineDays !== null && c.deadlineDays > 0 && c.deadlineDays <= 7);
+
+  // Build summary text
+  const managerName = manager || "All Managers";
+  let summary = `BASEBALL+ AT RISK CAMPS — WEEKLY SUMMARY
+`;
+  summary += `${managerName} · ${now}
+`;
+  summary += `${"=".repeat(60)}
+
+`;
+
+  summary += `OVERVIEW
+${"-".repeat(40)}
+`;
+  summary += `Total classes assigned:  ${total}
+`;
+  summary += `Viable:                  ${viable} (${pct(viable)}%)
+`;
+  summary += `At risk:                 ${atRisk} (${pct(atRisk)}%)
+`;
+  summary += `Cancelled:               ${cancelled} (${pct(cancelled)}%)
+`;
+  if (unset > 0) summary += `Status not set:          ${unset}
+`;
+  summary += `
+`;
+
+  if (overdue.length > 0) {
+    summary += `⚠ OVERDUE DECISIONS (camp within 14 days — decide now)
+${"-".repeat(40)}
+`;
+    overdue.forEach(c => {
+      summary += `• ${c.name}
+`;
+      summary += `  Director: ${c.director} · Starts: ${formatDate(c.date)}
+`;
+      summary += `  Enrolled: ${c.totalEnr} / Min: ${c.effectiveMin} · Needs ${c.gap} more
+
+`;
+    });
+  }
+
+  if (urgentThisWeek.length > 0) {
+    summary += `🕐 DECISIONS DUE THIS WEEK
+${"-".repeat(40)}
+`;
+    urgentThisWeek.forEach(c => {
+      summary += `• ${c.name}
+`;
+      summary += `  Director: ${c.director} · Starts: ${formatDate(c.date)} · ${c.deadlineDays} day${c.deadlineDays!==1?"s":""} to decide
+`;
+      summary += `  Enrolled: ${c.totalEnr} / Min: ${c.effectiveMin} · Needs ${c.gap} more
+
+`;
+    });
+  }
+
+  const remaining = atRiskCamps.filter(c => !overdue.includes(c) && !urgentThisWeek.includes(c));
+  if (remaining.length > 0) {
+    summary += `AT RISK CAMPS — UPCOMING
+${"-".repeat(40)}
+`;
+    remaining.forEach(c => {
+      const deadline = c.deadlineDays !== null ? `${c.deadlineDays} days to decide` : "No date set";
+      summary += `• ${c.name}
+`;
+      summary += `  Director: ${c.director} · Starts: ${formatDate(c.date)} · ${deadline}
+`;
+      summary += `  Enrolled: ${c.totalEnr} / Min: ${c.effectiveMin} · Needs ${c.gap} more
+
+`;
+    });
+  }
+
+  if (unset > 0) {
+    summary += `STATUS NOT YET SET
+${"-".repeat(40)}
+`;
+    myRecords.filter(r=>!r["Camp Status"]).slice(0,10).forEach(r => {
+      summary += `• ${r["Class Name"]} (${r["Class Code"]}) · ${formatDate(r["Begin Date"])}
+`;
+    });
+    if (unset > 10) summary += `  ... and ${unset - 10} more
+`;
+    summary += `
+`;
+  }
+
+  summary += `${"=".repeat(60)}
+`;
+  summary += `Update your camp statuses for the week:
+`;
+  summary += `https://kingdonja.github.io/ussc-dashboard/
+`;
+
+  document.getElementById("summary-modal-title").textContent = `Weekly Summary — ${managerName}`;
+  document.getElementById("summary-meta").textContent = `${total} classes · generated ${now}`;
+  document.getElementById("summary-output").value = summary;
+  document.getElementById("summary-modal").classList.add("open");
+  document.getElementById("summary-copy-btn").textContent = "Copy to clipboard";
+  document.getElementById("summary-copy-btn").classList.remove("copied");
+}
+
+function closeSummary() {
+  document.getElementById("summary-modal").classList.remove("open");
+}
+
+function copySummary() {
+  const text = document.getElementById("summary-output").value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById("summary-copy-btn");
+    btn.textContent = "✓ Copied!";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy to clipboard"; btn.classList.remove("copied"); }, 3000);
+  });
+}
+
+document.getElementById("summary-modal").addEventListener("click", function(e) {
+  if (e.target === this) closeSummary();
 });
 
 // ── COLUMN RESIZING ──────────────────────────────────────────────
