@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>USSC At-Risk Enrollment Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; background: #f5f5f3; color: #1a1a1a; min-height: 100vh; }
+
+  /* LOGIN */
+  #login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f5f3; }
+  .login-card { background: white; border-radius: 12px; border: 1px solid #e0e0e0; padding: 40px; width: 360px; }
+  .login-logo { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .login-sub { font-size: 12px; color: #888; margin-bottom: 28px; }
+  .login-label { font-size: 12px; color: #555; margin-bottom: 6px; display: block; }
+  .login-input { width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; margin-bottom: 10px; }
+  .login-input:focus { outline: none; border-color: #378ADD; }
+  .login-btn { width: 100%; padding: 10px; background: #185FA5; color: white; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; margin-top: 6px; }
+  .login-btn:hover { background: #0C447C; }
+  .login-error { color: #A32D2D; font-size: 12px; margin-top: 8px; display: none; }
+  .login-divider { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+
+  /* APP */
+  #app-screen { display: none; min-height: 100vh; }
+  .topbar { background: white; border-bottom: 1px solid #e8e8e8; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; height: 52px; position: sticky; top: 0; z-index: 100; }
+  .topbar-left { display: flex; align-items: center; gap: 14px; }
+  .topbar-brand { font-size: 14px; font-weight: 600; }
+  .topbar-divider { width: 1px; height: 20px; background: #e0e0e0; }
+  .topbar-title { font-size: 13px; color: #666; }
+  .access-badge { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; }
+  .badge-editor { background: #E6F1FB; color: #0C447C; }
+  .badge-viewer { background: #F1EFE8; color: #5F5E5A; }
+  .logout-btn { font-size: 12px; color: #888; cursor: pointer; background: none; border: none; padding: 4px 8px; border-radius: 6px; }
+  .logout-btn:hover { background: #f5f5f3; color: #333; }
+
+  .main { padding: 16px 20px; }
+
+  /* CONFIG BANNER */
+  .config-banner { background: #FFF8EC; border: 1px solid #EF9F27; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 12px; color: #633806; display: none; }
+  .config-banner a { color: #185FA5; cursor: pointer; text-decoration: underline; }
+
+  /* SUMMARY */
+  .summary-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 14px; }
+  .sum-card { background: white; border-radius: 8px; border: 1px solid #e8e8e8; padding: 12px 14px; }
+  .sum-label { font-size: 11px; color: #888; margin-bottom: 4px; }
+  .sum-val { font-size: 22px; font-weight: 500; }
+
+  /* TOOLBAR */
+  .toolbar { background: white; border: 1px solid #e8e8e8; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .toolbar-label { font-size: 11px; color: #888; white-space: nowrap; text-transform: uppercase; letter-spacing: 0.05em; }
+  .toolbar-group { display: flex; align-items: center; gap: 6px; }
+  .toolbar-sep { width: 1px; height: 24px; background: #e8e8e8; }
+  select.tb-select { padding: 5px 9px; border-radius: 7px; border: 1px solid #ddd; background: white; color: #1a1a1a; font-size: 12px; cursor: pointer; }
+  input.tb-search { padding: 5px 10px; border-radius: 7px; border: 1px solid #ddd; background: white; color: #1a1a1a; font-size: 12px; width: 200px; }
+  input.tb-search:focus { outline: none; border-color: #378ADD; }
+  .threshold-wrap { display: flex; align-items: center; gap: 6px; background: #f8f8f6; padding: 5px 10px; border-radius: 7px; border: 1px solid #e8e8e8; }
+  input.tb-num { width: 50px; padding: 3px 6px; border-radius: 5px; border: 1px solid #ddd; font-size: 12px; text-align: center; }
+  .pill-filter { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; cursor: pointer; user-select: none; border: 1px solid; transition: opacity 0.1s; }
+  .pill-viable { border-color: #97C459; color: #27500A; background: white; }
+  .pill-viable.active { background: #EAF3DE; }
+  .pill-atrisk { border-color: #EF9F27; color: #633806; background: white; }
+  .pill-atrisk.active { background: #FAEEDA; }
+  .pill-cancelled { border-color: #F09595; color: #791F1F; background: white; }
+  .pill-cancelled.active { background: #FCEBEB; }
+  .pill-unset { border-color: #ccc; color: #666; background: white; }
+  .pill-unset.active { background: #f3f3f0; }
+  .clear-link { font-size: 11px; color: #888; cursor: pointer; text-decoration: underline; }
+
+  /* UPLOAD AREA */
+  .upload-section { background: white; border: 1px solid #e8e8e8; border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+  .import-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #aaa; cursor: pointer; user-select: none; margin-bottom: 12px; width: fit-content; }
+  .import-toggle:hover { color: #666; }
+  .import-toggle .arrow { font-size: 10px; transition: transform 0.2s; }
+  .import-toggle.open .arrow { transform: rotate(90deg); }
+  .upload-tabs { display: flex; gap: 2px; background: #f5f5f3; padding: 3px; border-radius: 7px; width: fit-content; margin-bottom: 12px; }
+  .upload-tab { padding: 5px 14px; border-radius: 5px; font-size: 12px; cursor: pointer; color: #888; }
+  .upload-tab.active { background: white; color: #1a1a1a; font-weight: 500; }
+  .upload-drop { border: 1.5px dashed #ddd; border-radius: 8px; padding: 20px; text-align: center; color: #888; font-size: 12px; cursor: pointer; transition: border-color 0.15s; }
+  .upload-drop:hover { border-color: #378ADD; color: #185FA5; }
+  .upload-drop input { display: none; }
+  .upload-result { margin-top: 10px; font-size: 12px; padding: 8px 12px; border-radius: 6px; display: none; }
+  .upload-result.success { background: #EAF3DE; color: #27500A; }
+  .upload-result.error { background: #FCEBEB; color: #791F1F; }
+  .upload-result.warn { background: #FAEEDA; color: #633806; }
+
+  /* TABLE */
+  .table-wrap { background: white; border: 1px solid #e8e8e8; border-radius: 10px; overflow: hidden; }
+  .table-scroll { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 280px); }
+  table { width: 100%; border-collapse: collapse; }
+  .wrap-cell { white-space: normal !important; word-break: break-word; line-height: 1.4; }
+  th { position: relative; }
+  .col-resizer { position: absolute; right: 0; top: 0; height: 100%; width: 5px; cursor: col-resize; user-select: none; z-index: 5; }
+  .col-resizer:hover, .col-resizer.dragging { background: #378ADD; }
+  th { background: #f8f8f6; font-size: 11px; font-weight: 500; color: #888; padding: 8px 10px; border-bottom: 1px solid #e8e8e8; text-align: left; white-space: nowrap; cursor: pointer; user-select: none; text-transform: uppercase; letter-spacing: 0.04em; position: sticky; top: 0; z-index: 10; }
+  th:hover { color: #333; }
+  th.sorted { color: #185FA5; }
+  td { padding: 7px 10px; border-bottom: 1px solid #f2f2f2; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  tr:last-child td { border-bottom: none; }
+  tr.row-group-header td { background: #f0f5fb !important; font-weight: 500; font-size: 12px; }
+  tr.row-below td { background: #FFF8EC !important; }
+  tr.row-cancelled { opacity: 0.5; }
+  tr.row-past-viable td { background: #EAF3DE !important; }
+  tr.row-past-cancelled td { background: #FCEBEB !important; opacity: 0.6; }
+  tr.row-cancelled .class-code { text-decoration: line-through; }
+
+  .sport-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+  .sp-ba { background: #E6F1FB; color: #0C447C; }
+  .sp-sb { background: #FAEEDA; color: #633806; }
+  .sp-fb { background: #EAF3DE; color: #27500A; }
+  .class-code { font-family: monospace; font-size: 12px; font-weight: 500; }
+  .multi-badge { background: #EEEDFE; color: #534AB7; font-size: 10px; font-weight: 500; padding: 1px 5px; border-radius: 4px; margin-left: 4px; }
+  .fill-wrap { display: flex; align-items: center; gap: 5px; }
+  .fill-bar { flex: 1; height: 5px; background: #e8e8e8; border-radius: 3px; overflow: hidden; min-width: 32px; }
+  .fill-inner { height: 100%; border-radius: 3px; }
+  .fill-pct { font-size: 11px; color: #888; min-width: 30px; text-align: right; }
+  .status-select { width: 100%; padding: 3px 6px; border-radius: 5px; font-size: 11px; cursor: pointer; border: 1px solid #ddd; background: white; }
+  .status-select.viable { background: #EAF3DE; color: #27500A; border-color: #97C459; }
+  .status-select.at-risk { background: #FAEEDA; color: #633806; border-color: #EF9F27; }
+  .status-select.cancelled { background: #FCEBEB; color: #791F1F; border-color: #F09595; }
+  .notes-input { width: 100%; padding: 3px 6px; border-radius: 5px; border: 1px solid #ddd; font-size: 11px; background: transparent; }
+  .notes-input:focus { outline: none; border-color: #378ADD; }
+  .notes-input:disabled { cursor: not-allowed; }
+  .status-select:disabled { cursor: not-allowed; opacity: 0.7; }
+  .no-data { text-align: center; padding: 48px; color: #888; }
+  .saving-dot { display: inline-block; width: 6px; height: 6px; background: #EF9F27; border-radius: 50%; margin-left: 6px; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* URGENCY & GAP */
+  .urgency-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:500; white-space:nowrap; }
+  .urgency-red { background:#FCEBEB; color:#791F1F; }
+  .urgency-amber { background:#FAEEDA; color:#633806; }
+  .gap-badge { display:inline-block; font-size:11px; font-weight:500; color:#A32D2D; background:#FCEBEB; padding:1px 7px; border-radius:10px; margin-left:6px; }
+  .ai-draft-btn { padding:2px 8px; border-radius:6px; border:1px solid #B5D4F4; background:#E6F1FB; color:#0C447C; font-size:11px; cursor:pointer; white-space:nowrap; margin-left:8px; }
+  .ai-draft-btn:hover { background:#C8E0F5; }
+
+  /* AI EMAIL MODAL */
+  .ai-modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:300; align-items:center; justify-content:center; }
+  .ai-modal-overlay.open { display:flex; }
+  .ai-modal { background:white; border-radius:12px; width:620px; max-width:95vw; max-height:90vh; display:flex; flex-direction:column; border:1px solid #e0e0e0; overflow:hidden; }
+  .ai-modal-header { padding:16px 20px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+  .ai-modal-title { font-size:14px; font-weight:500; }
+  .ai-modal-close { background:none; border:none; font-size:18px; color:#aaa; cursor:pointer; padding:0 4px; }
+  .ai-modal-close:hover { color:#333; }
+  .ai-modal-body { padding:16px 20px; flex:1; overflow-y:auto; }
+  .ai-type-row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+  .ai-type-btn { padding:5px 12px; border-radius:20px; border:1px solid #ddd; background:white; font-size:12px; cursor:pointer; color:#555; }
+  .ai-type-btn.active { background:#185FA5; color:white; border-color:#185FA5; }
+  .ai-output { width:100%; min-height:280px; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:13px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; line-height:1.6; resize:vertical; color:#1a1a1a; }
+  .ai-output:focus { outline:none; border-color:#378ADD; }
+  .ai-modal-footer { padding:12px 20px; border-top:1px solid #eee; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+  .ai-camp-info { font-size:11px; color:#888; }
+  .copy-btn { padding:7px 18px; border-radius:7px; background:#185FA5; color:white; border:none; font-size:13px; font-weight:500; cursor:pointer; }
+  .copy-btn:hover { background:#0C447C; }
+  .copy-btn.copied { background:#3B6D11; }
+  .ai-generating { color:#888; font-style:italic; font-size:13px; padding:12px 0; }
+
+  /* GROUP HEADER ROW */
+  .group-row td { background: #EEF4FB; padding: 5px 10px; font-size: 11px; color: #185FA5; font-weight: 500; border-bottom: 1px solid #d0e4f5; border-top: 2px solid #B5D4F4; }
+  .group-total-badge { background: #185FA5; color: white; font-size: 10px; padding: 1px 7px; border-radius: 10px; margin-left: 8px; }
+  .group-total-warn { background: #EF9F27; }
+
+  /* SETTINGS MODAL */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: white; border-radius: 12px; padding: 28px; width: 420px; border: 1px solid #e0e0e0; }
+  .modal h3 { font-size: 15px; font-weight: 500; margin-bottom: 16px; }
+  .modal-label { font-size: 12px; color: #555; margin-bottom: 5px; display: block; }
+  .modal-input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 7px; font-size: 13px; margin-bottom: 12px; }
+  .modal-input:focus { outline: none; border-color: #378ADD; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+  .btn-cancel { padding: 7px 16px; border-radius: 7px; border: 1px solid #ddd; background: white; font-size: 13px; cursor: pointer; }
+  .btn-save { padding: 7px 16px; border-radius: 7px; border: none; background: #185FA5; color: white; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .modal-note { font-size: 11px; color: #888; margin-top: -8px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">US Sports Camps</div>
+    <div class="login-sub">At-Risk Enrollment Dashboard</div>
+    <label class="login-label">Password</label>
+    <input class="login-input" type="password" id="login-password" placeholder="Enter password..." onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="login-btn" onclick="doLogin()">Sign in</button>
+    <div class="login-error" id="login-error">Incorrect password. Try again.</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-screen">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-brand">US Sports Camps</div>
+      <div class="topbar-divider"></div>
+      <div class="topbar-title">At-Risk Enrollment Dashboard</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="access-badge" class="access-badge"></span>
+      <span id="last-updated" style="font-size:11px;color:#aaa"></span>
+      <button class="logout-btn" onclick="showSettings()" id="settings-btn" style="display:none">⚙ Settings</button>
+      <button class="logout-btn" onclick="doLogout()">Sign out</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="config-banner" id="config-banner">
+      ⚠ Airtable is not configured yet. <a onclick="showSettings()">Click here to add your Airtable API credentials</a> to load live data.
+    </div>
+
+    <!-- SUMMARY -->
+    <div class="summary-row" id="summary-row" style="grid-template-columns:repeat(5,1fr)">
+      <div class="sum-card"><div class="sum-label">Total classes</div><div class="sum-val" id="s-total">—</div></div>
+      <div class="sum-card"><div class="sum-label">Camp weeks</div><div class="sum-val" id="s-weeks">—</div></div>
+      <div class="sum-card"><div class="sum-label">Viable</div><div class="sum-val" id="s-viable" style="color:#3B6D11">—</div><div class="sum-pct" id="s-viable-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
+      <div class="sum-card"><div class="sum-label">At risk</div><div class="sum-val" id="s-atrisk" style="color:#A32D2D">—</div><div class="sum-pct" id="s-atrisk-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
+      <div class="sum-card"><div class="sum-label">Cancelled</div><div class="sum-val" id="s-cancelled" style="color:#791F1F">—</div><div class="sum-pct" id="s-cancelled-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <span class="toolbar-label">Manager</span>
+        <select class="tb-select" id="manager-filter" onchange="renderTable()">
+          <option value="">All managers</option>
+          <option value="Ron Hall">Ron Hall</option>
+          <option value="Jacob Burk">Jacob Burk</option>
+          <option value="Jacob Kingdon">Jacob Kingdon</option>
+        </select>
+      </div>
+      <div class="toolbar-sep"></div>
+      <div class="toolbar-group">
+        <span class="toolbar-label">Sport</span>
+        <select class="tb-select" id="sport-filter" onchange="renderTable()">
+          <option value="">All sports</option>
+          <option value="Baseball">Baseball</option>
+          <option value="Softball">Softball</option>
+          <option value="Football">Football</option>
+        </select>
+      </div>
+      <div class="toolbar-sep"></div>
+      <div class="toolbar-group" style="flex-wrap:wrap">
+        <span class="toolbar-label">Status</span>
+        <span class="pill-filter pill-viable" id="pill-Viable" onclick="togglePill('Viable')">Viable</span>
+        <span class="pill-filter pill-atrisk" id="pill-At risk" onclick="togglePill('At risk')">At risk</span>
+        <span class="pill-filter pill-cancelled" id="pill-Cancelled" onclick="togglePill('Cancelled')">Cancelled</span>
+        <span class="pill-filter pill-unset" id="pill-" onclick="togglePill('')">Unset</span>
+        <span class="clear-link" id="pill-clear" style="display:none" onclick="clearPills()">Clear</span>
+      </div>
+      <div class="toolbar-sep"></div>
+      <input class="tb-search" type="text" id="search-input" placeholder="Search code, name, director..." oninput="renderTable()">
+      <div class="toolbar-sep"></div>
+      <div class="threshold-wrap">
+        <span class="toolbar-label">Highlight camps under</span>
+        <input class="tb-num" type="number" id="threshold" value="25" min="0" step="1" oninput="renderTable()">
+        <span class="toolbar-label">campers</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-left:auto">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#555;cursor:pointer;user-select:none">
+          <input type="checkbox" id="hide-past" onchange="renderTable()" style="cursor:pointer"> Hide past
+        </label>
+        <button style="padding:5px 12px;border-radius:7px;border:1px solid #ddd;background:white;font-size:12px;cursor:pointer" onclick="loadFromAirtable()">&#x21BB; Refresh</button>
+      </div>
+    </div>
+
+    <!-- UPLOAD (editor only) -->
+    <div id="upload-wrapper" style="display:none">
+      <div class="import-toggle" id="import-toggle" onclick="toggleImport()">
+        <span class="arrow">▶</span> Import data
+      </div>
+      <div class="upload-section" id="upload-section" style="display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:500">Import data</div>
+        <div class="upload-tabs">
+          <div class="upload-tab active" id="tab-enr" onclick="setUploadTab('enrollment')">Enrollment update</div>
+          <div class="upload-tab" id="tab-full" onclick="setUploadTab('full')">Full data load</div>
+          <div class="upload-tab" id="tab-url" onclick="setUploadTab('url')">Camp URLs</div>
+        </div>
+      </div>
+      <div id="upload-hint-enr" style="font-size:11px;color:#888;margin-bottom:8px">Upload a file with only <strong>Class Code</strong> and <strong>Enrollment</strong> columns. Status, notes, Min Viable and Camp URL will not be changed.</div>
+      <div id="upload-hint-full" style="font-size:11px;color:#888;margin-bottom:8px;display:none">Upload a full data file with all columns. Existing status and notes will be preserved for matching class codes.</div>
+      <div id="upload-hint-url" style="font-size:11px;color:#888;margin-bottom:8px;display:none">Upload a file with <strong>Camp Code</strong> and <strong>Camp URL</strong> columns. Updates all classes sharing that camp code.</div>
+      <div class="upload-drop" id="upload-drop" onclick="document.getElementById('file-input').click()" ondragover="event.preventDefault()" ondrop="handleDrop(event)">
+        <input type="file" id="file-input" accept=".csv,.xlsx,.xls" onchange="handleFileSelect(event)">
+        <div style="font-size:22px;margin-bottom:6px;color:#ccc">↑</div>
+        <div>Drop a CSV or Excel file here, or click to browse</div>
+      </div>
+      <div class="upload-result" id="upload-result"></div>
+    </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table id="main-table">
+          <thead>
+            <tr>
+              <th onclick="sortBy('Class Code')" id="th-Class Code">Class code</th>
+              <th onclick="sortBy('Class Name')" id="th-Class Name">Class name</th>
+              <th onclick="sortBy('Director')" id="th-Director">Director</th>
+              <th onclick="sortBy('Begin Date')" id="th-Begin Date" class="sorted">Begin date ↑</th>
+              <th onclick="sortBy('Enrollment')" id="th-Enrollment" style="text-align:right">Enr</th>
+              <th onclick="sortBy('Gap')" id="th-Gap">Gap</th>
+              <th onclick="sortBy('Urgency')" id="th-Urgency">Urgency</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <tr><td colspan="9" class="no-data">Loading data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI EMAIL MODAL -->
+<div class="ai-modal-overlay" id="ai-modal">
+  <div class="ai-modal">
+    <div class="ai-modal-header">
+      <div class="ai-modal-title" id="ai-modal-title">Draft outreach email</div>
+      <button class="ai-modal-close" onclick="closeAiModal()">×</button>
+    </div>
+    <div class="ai-modal-body">
+      <div style="font-size:12px;color:#666;margin-bottom:10px;padding:8px 12px;background:#F8F9FB;border-radius:7px;border:1px solid #e8e8e8">
+        Select an email type below, then click <strong>Copy prompt</strong> and paste it into any AI tool — Claude, ChatGPT, Copilot, or HubSpot AI.
+      </div>
+      <div class="ai-type-row">
+        <button class="ai-type-btn active" onclick="setEmailType('friend', this)">Bring a Friend</button>
+        <button class="ai-type-btn" onclick="setEmailType('coach', this)">Coach / League Outreach</button>
+        <button class="ai-type-btn" onclick="setEmailType('director', this)">Director Nudge</button>
+        <button class="ai-type-btn" onclick="setEmailType('pastcamper', this)">Past Camper Re-engagement</button>
+      </div>
+      <textarea class="ai-output" id="ai-output" readonly style="background:#f8f9fb;color:#333;font-size:12px" placeholder="Select an email type above to see the prompt..."></textarea>
+    </div>
+    <div class="ai-modal-footer">
+      <div class="ai-camp-info" id="ai-camp-info"></div>
+      <button class="copy-btn" id="copy-btn" onclick="copyPrompt()">Copy prompt</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <h3>Airtable configuration</h3>
+    <label class="modal-label">Personal Access Token</label>
+    <input class="modal-input" type="password" id="cfg-token" placeholder="patXXXXXXXXXXXXXX">
+    <div class="modal-note">Generate at airtable.com → Developer Hub → Personal access tokens. Needs data.records:read and data.records:write scope.</div>
+    <label class="modal-label">Base ID</label>
+    <input class="modal-input" type="text" id="cfg-base" placeholder="appXXXXXXXXXXXXXX">
+    <div class="modal-note">Found in your Airtable base URL: airtable.com/<strong>appXXX</strong>/tblXXX</div>
+    <label class="modal-label">Table name</label>
+    <input class="modal-input" type="text" id="cfg-table" placeholder="Classes">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+      <button class="btn-save" onclick="saveSettings()">Save & connect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────
+const EDITOR_PASSWORD = "ussc2025editor";
+const VIEWER_PASSWORD = "ussc2025viewer";
+
+// ── STATE ───────────────────────────────────────────────────────
+let accessLevel = null;
+let records = [];
+let sortCol = "Begin Date";
+let sortDir = 1;
+let statusFilters = [];
+let uploadMode = "enrollment";
+// Airtable credentials — update these if your token changes
+let airtableConfig = {
+  token: localStorage.getItem("ussc_token") || "",
+  base: "appHsgtPKZWpD9SXq",
+  table: "Classes",
+};
+let recordIdMap = {}; // classCode -> airtable record id
+
+// ── AUTH ────────────────────────────────────────────────────────
+function doLogin() {
+  const pw = document.getElementById("login-password").value;
+  const err = document.getElementById("login-error");
+  if (pw === EDITOR_PASSWORD) { accessLevel = "editor"; launchApp(); }
+  else if (pw === VIEWER_PASSWORD) { accessLevel = "viewer"; launchApp(); }
+  else { err.style.display = "block"; }
+}
+
+function launchApp() {
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("app-screen").style.display = "block";
+  const badge = document.getElementById("access-badge");
+  badge.textContent = accessLevel === "editor" ? "Editor" : "Viewer";
+  badge.className = "access-badge " + (accessLevel === "editor" ? "badge-editor" : "badge-viewer");
+  if (accessLevel === "editor") {
+    document.getElementById("settings-btn").style.display = "";
+    document.getElementById("upload-wrapper").style.display = "";
+  }
+  // Base is hardcoded — always try to load. Token needed for writes (editor only)
+  if (!airtableConfig.token) {
+    if (accessLevel === "editor") {
+      document.getElementById("config-banner").style.display = "block";
+    }
+  }
+  loadFromAirtable();
+}
+
+function doLogout() {
+  accessLevel = null; records = [];
+  document.getElementById("login-screen").style.display = "flex";
+  document.getElementById("app-screen").style.display = "none";
+  document.getElementById("login-password").value = "";
+  document.getElementById("login-error").style.display = "none";
+}
+
+// ── SETTINGS ────────────────────────────────────────────────────
+function showSettings() {
+  document.getElementById("cfg-token").value = airtableConfig.token || "";
+  document.getElementById("cfg-base").value = airtableConfig.base || "";
+  document.getElementById("cfg-table").value = airtableConfig.table || "Classes";
+  document.getElementById("settings-modal").classList.add("open");
+}
+function closeSettings() { document.getElementById("settings-modal").classList.remove("open"); }
+function saveSettings() {
+  const token = document.getElementById("cfg-token").value.trim();
+  const base = document.getElementById("cfg-base").value.trim();
+  const table = document.getElementById("cfg-table").value.trim() || "Classes";
+  airtableConfig = { token, base, table };
+  localStorage.setItem("ussc_token", token);
+  localStorage.setItem("ussc_cfg", JSON.stringify(airtableConfig));
+  closeSettings();
+  document.getElementById("config-banner").style.display = "none";
+  loadFromAirtable();
+}
+
+// ── AIRTABLE API ─────────────────────────────────────────────────
+async function loadFromAirtable() {
+  if (!airtableConfig.base) return;
+  const tbody = document.getElementById("table-body");
+  tbody.innerHTML = '<tr><td colspan="9" class="no-data">Loading from Airtable...</td></tr>';
+  try {
+    let allRecords = [], offset = null;
+    const tableName = encodeURIComponent(airtableConfig.table || "Classes");
+    do {
+      const url = `https://api.airtable.com/v0/${airtableConfig.base}/${tableName}` + (offset ? `?offset=${offset}` : "");
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${airtableConfig.token}` } });
+      if (!res.ok) throw new Error(`Airtable error: ${res.status} ${res.statusText}`);
+      const data = await res.json();
+      allRecords = allRecords.concat(data.records);
+      offset = data.offset;
+    } while (offset);
+
+    records = allRecords.map(r => ({
+      id: r.id,
+      "Class Code": r.fields["Class Code"] || "",
+      "Camp Code": r.fields["Camp Code"] || "",
+      "Class Name": r.fields["Class Name"] || "",
+      "Sport": r.fields["Sport"] || "",
+      "Director": r.fields["Director"] || "",
+      "Sport Manager": r.fields["Sport Manager"] || "",
+      "Begin Date": r.fields["Begin Date"] || "",
+      "Min Viable": r.fields["Min Viable"] || 0,
+      "Enrollment": r.fields["Enrollment"] || 0,
+      "Camp Status": r.fields["Camp Status"] ? String(r.fields["Camp Status"]) : "",
+      "Camp Notes": r.fields["Camp Notes"] || "",
+      "Camp URL": r.fields["Camp URL"] || "",
+    }));
+
+    recordIdMap = {};
+    records.forEach(r => { recordIdMap[r["Class Code"]] = r.id; });
+
+    document.getElementById("last-updated").textContent = "Updated " + new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+    renderTable();
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="9" class="no-data" style="color:#A32D2D">Error loading data: ${e.message}</td></tr>`;
+  }
+}
+
+async function saveToAirtable(recordId, fields) {
+  if (!airtableConfig.base) return;
+  const tableName = encodeURIComponent(airtableConfig.table || "Classes");
+  const body = { fields };
+  const res = await fetch(`https://api.airtable.com/v0/${airtableConfig.base}/${tableName}/${recordId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${airtableConfig.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return data;
+}
+
+// ── FILTERS & SORT ────────────────────────────────────────────────
+function togglePill(val) {
+  if (statusFilters.includes(val)) statusFilters = statusFilters.filter(v => v !== val);
+  else statusFilters.push(val);
+  document.querySelectorAll(".pill-filter").forEach(p => p.classList.remove("active"));
+  statusFilters.forEach(v => {
+    const id = "pill-" + v;
+    const el = document.getElementById(id);
+    if (el) el.classList.add("active");
+  });
+  document.getElementById("pill-clear").style.display = statusFilters.length > 0 ? "" : "none";
+  renderTable();
+}
+function clearPills() {
+  statusFilters = [];
+  document.querySelectorAll(".pill-filter").forEach(p => p.classList.remove("active"));
+  document.getElementById("pill-clear").style.display = "none";
+  renderTable();
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = 1; }
+  document.querySelectorAll("th").forEach(th => {
+    const base = th.textContent.replace(" ↑","").replace(" ↓","");
+    th.textContent = base;
+    th.classList.remove("sorted");
+  });
+  const th = document.getElementById("th-" + col);
+  if (th) { th.textContent = th.textContent + (sortDir === 1 ? " ↑" : " ↓"); th.classList.add("sorted"); }
+  renderTable();
+}
+
+function getFiltered() {
+  const sport = document.getElementById("sport-filter").value;
+  const manager = document.getElementById("manager-filter") ? document.getElementById("manager-filter").value : "";
+  const q = document.getElementById("search-input").value.toLowerCase();
+  return records.filter(r => {
+    if (sport && r["Sport"] !== sport) return false;
+    if (manager && r["Sport Manager"] !== manager) return false;
+    if (statusFilters.length > 0 && !statusFilters.map(s=>s.toLowerCase()).includes((r["Camp Status"]||"").toLowerCase())) return false;
+    if (q && !(r["Class Code"]+r["Camp Code"]+r["Class Name"]+r["Director"]+r["Sport Manager"]+r["Sport"]).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+
+// ── RENDER ────────────────────────────────────────────────────────
+function renderTable() {
+  const threshold = parseInt(document.getElementById("threshold").value) || 0;
+  let data = getFiltered();
+
+  // Sort
+  data.sort((a,b) => {
+    let av, bv;
+    if (sortCol === "Gap") { av = (a["Min Viable"]||threshold) - a["Enrollment"]; bv = (b["Min Viable"]||threshold) - b["Enrollment"]; }
+    else if (sortCol === "Urgency") {
+      const td = new Date(); td.setHours(0,0,0,0);
+      const ad = a["Begin Date"] ? Math.ceil((new Date(a["Begin Date"]+"T00:00:00")-td)/86400000)-14 : 999;
+      const bd = b["Begin Date"] ? Math.ceil((new Date(b["Begin Date"]+"T00:00:00")-td)/86400000)-14 : 999;
+      av = ad; bv = bd;
+    }
+    else if (["Min Viable","Enrollment"].includes(sortCol)) { av = a[sortCol]||0; bv = b[sortCol]||0; }
+    else { av = (a[sortCol]||"").toLowerCase(); bv = (b[sortCol]||"").toLowerCase(); }
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+
+  // Build groups: campCode+date -> array of records
+  const groupMap = {};
+  const groupOrder = [];
+  data.forEach(r => {
+    const key = r["Camp Code"] + "|" + r["Begin Date"];
+    if (!groupMap[key]) { groupMap[key] = []; groupOrder.push(key); }
+    groupMap[key].push(r);
+  });
+
+  // Unique camp weeks (for summary)
+  const allGroups = {};
+  records.forEach(r => {
+    const key = r["Camp Code"] + "|" + r["Begin Date"];
+    if (!allGroups[key]) allGroups[key] = [];
+    allGroups[key].push(r);
+  });
+
+  // Summary
+  const filtered = getFiltered();
+  const weeksBelowThreshold = new Set();
+  Object.entries(allGroups).forEach(([key, recs]) => {
+    const totalEnr = recs.reduce((s,r)=>s+r["Enrollment"],0);
+    const totalMin = recs.reduce((s,r)=>s+r["Min Viable"],0);
+    const effectiveMin = totalMin > 0 ? totalMin : (recs.length * threshold);
+    if (totalEnr < effectiveMin) recs.forEach(r => weeksBelowThreshold.add(r["Class Code"]));
+  });
+
+  document.getElementById("s-total").textContent = filtered.length;
+  document.getElementById("s-weeks").textContent = groupOrder.length;
+  const total = filtered.length;
+  const viableCount = filtered.filter(r=>r["Camp Status"]==="Viable").length;
+  const atRiskCount = filtered.filter(r=>r["Camp Status"]==="At risk").length;
+  const cancelledCount = filtered.filter(r=>r["Camp Status"]==="Cancelled").length;
+  const pct = (n) => total > 0 ? " (" + Math.round(n/total*100) + "%)" : "";
+  document.getElementById("s-viable").textContent = viableCount;
+  document.getElementById("s-viable-pct").textContent = pct(viableCount);
+  document.getElementById("s-atrisk").textContent = atRiskCount;
+  document.getElementById("s-atrisk-pct").textContent = pct(atRiskCount);
+  document.getElementById("s-cancelled").textContent = cancelledCount;
+  document.getElementById("s-cancelled-pct").textContent = pct(cancelledCount);
+
+  // Render rows
+  const isEditor = accessLevel === "editor";
+  const tbody = document.getElementById("table-body");
+  let html = "";
+
+  groupOrder.forEach(key => {
+    const group = groupMap[key];
+    const isMultiClass = group.length > 1;
+    const totalEnr = group.reduce((s,r)=>s+r["Enrollment"],0);
+    const totalMin = group.reduce((s,r)=>s+r["Min Viable"],0);
+    const effectiveMin = totalMin > 0 ? totalMin : (group.length * threshold);
+    const groupBelow = totalEnr < effectiveMin;
+    const groupGap = Math.max(0, effectiveMin - totalEnr);
+
+    // Shared urgency calc for group
+    const today = new Date(); today.setHours(0,0,0,0);
+    const r0 = group[0];
+    const campDate = r0["Begin Date"] ? new Date(r0["Begin Date"] + "T00:00:00") : null;
+    const daysUntil = campDate ? Math.ceil((campDate - today)/(1000*60*60*24)) : null;
+    const deadlineDays = daysUntil !== null ? daysUntil - 14 : null;
+    const isAtRiskGroup = group.some(r => r["Camp Status"] === "At risk") || groupBelow;
+    const campURL = r0["Camp URL"] || "";
+    const urlParam = campURL ? encodeURIComponent(campURL) : "";
+
+    function urgencyHtml(dDays, dUntil) {
+      if (dUntil === null || dUntil <= 0) return "";
+      if (dDays <= 0) return '<span class="urgency-badge urgency-red">&#9888; Overdue</span>';
+      if (dDays <= 7) return '<span class="urgency-badge urgency-red">&#9888; ' + dDays + 'd left</span>';
+      if (dDays <= 21) return '<span class="urgency-badge urgency-amber">&#8987; ' + dDays + 'd left</span>';
+      return "";
+    }
+
+    // Group header for multi-class
+    if (isMultiClass) {
+      const sport = r0["Sport"];
+      const sportAbbr = sport === "Baseball" ? "BA" : sport === "Softball" ? "SB" : "FB";
+      const sportClass = sport === "Baseball" ? "sp-ba" : sport === "Softball" ? "sp-sb" : "sp-fb";
+      const pct = effectiveMin > 0 ? Math.min(Math.round(totalEnr/effectiveMin*100),999) : 0;
+      const allCancelled = group.every(r => r["Camp Status"] === "Cancelled");
+      const groupViable = group.every(r => r["Camp Status"] === "Viable");
+      const urg = (!groupViable && !allCancelled) ? urgencyHtml(deadlineDays, daysUntil) : "";
+      const aiBtn = isEditor && isAtRiskGroup && !allCancelled && daysUntil !== null && daysUntil > 0
+        ? `<button class="ai-draft-btn" onclick="openAiModal(event,'${r0["Camp Code"]}','${r0["Class Name"].replace(/'/g,"\'")}','${r0["Director"].replace(/'/g,"\'")}','${sport}','${r0["Begin Date"]}',${totalEnr},${effectiveMin},'${campURL.replace(/'/g,"\'")}')">&#10022; Draft email</button>` : "";
+      html += `<tr class="group-row">
+        <td colspan="2" style="font-size:12px;color:#185FA5;font-weight:500">
+          <span class="sport-pill ${sportClass}">${sportAbbr}</span>
+          <span style="font-family:monospace;margin-left:6px">${r0["Camp Code"]}</span> — ${r0["Director"]} — ${group.length} classes
+        </td>
+        <td></td>
+        <td style="font-size:12px">${formatDate(r0["Begin Date"])}</td>
+        <td style="text-align:right;font-weight:500;color:${groupBelow?"#BA7517":"#185FA5"}">${totalEnr}</td>
+        <td>${allCancelled ? "" : groupBelow ? '<span class="gap-badge">needs ' + groupGap + '</span>' : '<span style="font-size:11px;color:#aaa">—</span>'}</td>
+        <td>${allCancelled ? "" : urg}</td>
+        <td></td>
+        <td>${allCancelled ? "" : aiBtn}</td>
+      </tr>`;
+    }
+
+    group.forEach(r => {
+      const enr = r["Enrollment"];
+      const minV = r["Min Viable"] || 0;
+      const status = r["Camp Status"] || "";
+      const isCancelled = status === "Cancelled";
+      const isPast = campDate && campDate < today;
+      const isPastViable = isPast && status === "Viable";
+      const isPastCancelled = isPast && isCancelled;
+      const isBelow = groupBelow;
+      const rowClass = isPastViable ? "row-past-viable" : isPastCancelled ? "row-past-cancelled" : isCancelled ? "row-cancelled" : isBelow ? "row-below" : "";
+      const statusClass = status === "Viable" ? "viable" : status === "At risk" ? "at-risk" : status === "Cancelled" ? "cancelled" : "";
+      const indented = isMultiClass;
+      const scIsAtRisk = (status === "At risk") || (!isMultiClass && isBelow);
+      const scUrgency = !isMultiClass && status !== "Viable" ? urgencyHtml(deadlineDays, daysUntil) : "";
+      const scGap = !isMultiClass && isBelow ? '<span class="gap-badge">needs ' + Math.max(0,(minV||threshold)-enr) + '</span>' : "";
+      const scAiBtn = isEditor && !isMultiClass && scIsAtRisk && daysUntil !== null && daysUntil > 0
+        ? `<button class="ai-draft-btn" onclick="openAiModal(event,'${r["Camp Code"]}','${r["Class Name"].replace(/'/g,"\'")}','${r["Director"].replace(/'/g,"\'")}','${r["Sport"]}','${r["Begin Date"]}',${enr},${minV||threshold},'${(r["Camp URL"]||"").replace(/'/g,"\'")}')">&#10022; Draft email</button>` : "";
+      const rowId = "row-" + r.id;
+      const detailId = "detail-" + r.id;
+
+      html += `<tr class="${rowClass}" id="${rowId}" style="cursor:pointer" onclick="toggleDetail('${r.id}')">
+        <td><span style="color:#aaa;font-size:10px;margin-right:5px">▶</span><span class="class-code" style="padding-left:${indented?"14px":"0"};${isCancelled?"text-decoration:line-through":""}">${r["Class Code"]}</span></td>
+        <td class="wrap-cell" style="max-width:220px;white-space:normal">${r["Class Name"]}</td>
+        <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis" title="${r["Director"]}">${r["Director"]}</td>
+        <td>${formatDate(r["Begin Date"])}</td>
+        <td style="text-align:right;font-weight:500;color:${isBelow&&!isCancelled?"#BA7517":"inherit"}">${enr}</td>
+        <td>${isCancelled ? "" : scGap}</td>
+        <td>${isCancelled ? "" : scUrgency}</td>
+        <td style="min-width:110px">
+          <select class="status-select ${statusClass}" ${!isEditor?"disabled":""} onchange="updateStatus(this,'${r.id}','${r["Class Code"]}');event.stopPropagation()">
+            <option value="" ${status===""?"selected":""}>— unset</option>
+            <option value="Viable" ${status==="Viable"?"selected":""}>Viable</option>
+            <option value="At risk" ${status==="At risk"?"selected":""}>At risk</option>
+            <option value="Cancelled" ${status==="Cancelled"?"selected":""}>Cancelled</option>
+          </select>
+        </td>
+        <td>${isCancelled ? "" : scAiBtn}</td>
+      </tr>
+      <tr id="${detailId}" style="display:none">
+        <td colspan="9" style="padding:0">
+          <div style="background:#F8F9FB;border-bottom:1px solid #e8e8e8;padding:12px 20px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px">
+            <div>
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#888;margin-bottom:4px">Sport Manager</div>
+              <div style="font-size:13px">${r["Sport Manager"]}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#888;margin-bottom:4px">Min Viable</div>
+              ${isEditor
+                ? `<input type="number" min="0" step="1" value="${minV||""}" placeholder="—"
+                    style="width:60px;padding:3px 6px;border-radius:5px;border:1px solid #ddd;font-size:12px;text-align:center"
+                    onclick="event.stopPropagation()"
+                    onblur="updateMinViable(this,'${r.id}','${r["Class Code"]}',${minV})"
+                    onkeydown="if(event.key==='Enter')this.blur()">`
+                : `<span style="font-size:13px">${minV||"—"}</span>`}
+            </div>
+            <div>
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#888;margin-bottom:4px">Camp URL</div>
+              ${isEditor
+                ? `<input type="text" value="${(r["Camp URL"]||"").replace(/"/g,"&quot;")}" placeholder="https://..."
+                    style="width:100%;padding:3px 6px;border-radius:5px;border:1px solid #ddd;font-size:11px"
+                    onclick="event.stopPropagation()"
+                    onblur="updateCampURL(this,'${r.id}','${r["Class Code"]}')">`
+                : r["Camp URL"] ? `<a href="${r["Camp URL"]}" target="_blank" style="font-size:12px;color:#185FA5">Open page ↗</a>` : '<span style="font-size:12px;color:#aaa">—</span>'}
+            </div>
+            <div>
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#888;margin-bottom:4px">Notes</div>
+              ${isEditor
+                ? `<input class="notes-input" type="text" value="${(r["Camp Notes"]||"").replace(/"/g,"&quot;")}" placeholder="Add note…"
+                    onclick="event.stopPropagation()"
+                    onblur="updateNotes(this,'${r.id}','${r["Class Code"]}')">`
+                : `<span style="font-size:12px">${r["Camp Notes"]||"—"}</span>`}
+            </div>
+          </div>
+        </td>
+      </tr>`;
+    });
+  });
+
+  tbody.innerHTML = html;
+}
+
+function formatDate(d) {
+  if (!d) return "";
+  const dt = new Date(d + "T00:00:00");
+  return dt.toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" });
+}
+
+// ── INLINE UPDATES ────────────────────────────────────────────────
+function updateStatus(sel, recordId, classCode) {
+  const val = sel.value;
+  sel.className = "status-select " + (val==="Viable"?"viable":val==="At risk"?"at-risk":val==="Cancelled"?"cancelled":"");
+  const rec = records.find(r => r.id === recordId);
+  if (rec) rec["Camp Status"] = val;
+  const dot = document.createElement("span");
+  dot.className = "saving-dot";
+  sel.parentNode.appendChild(dot);
+  saveToAirtable(recordId, { "Camp Status": val || null }).then((result) => {
+      dot.remove();
+    renderTable();
+  }).catch(err => {
+      dot.remove();
+  });
+}
+
+function updateNotes(input, recordId, classCode) {
+  const val = input.value;
+  const rec = records.find(r => r.id === recordId);
+  if (rec && rec["Camp Notes"] !== val) {
+    rec["Camp Notes"] = val;
+    const dot = document.createElement("span");
+    dot.className = "saving-dot";
+    input.parentNode.appendChild(dot);
+    saveToAirtable(recordId, { "Camp Notes": val }).then(() => dot.remove());
+  }
+}
+
+function toggleDetail(recordId) {
+  const detail = document.getElementById("detail-" + recordId);
+  const row = document.getElementById("row-" + recordId);
+  if (detail) {
+    const isOpen = detail.style.display !== "none";
+    detail.style.display = isOpen ? "none" : "";
+    if (row) {
+      const arrow = row.querySelector("td:first-child span:first-child");
+      if (arrow) arrow.textContent = isOpen ? "▶" : "▼";
+      if (arrow) arrow.style.color = isOpen ? "#aaa" : "#185FA5";
+    }
+  }
+}
+
+function updateCampURL(input, recordId, classCode) {
+  const val = input.value.trim();
+  const rec = records.find(r => r.id === recordId);
+  if (rec && rec["Camp URL"] !== val) {
+    rec["Camp URL"] = val;
+    const dot = document.createElement("span");
+    dot.className = "saving-dot";
+    input.parentNode.appendChild(dot);
+    saveToAirtable(recordId, { "Camp URL": val }).then(() => dot.remove());
+  }
+}
+
+function updateMinViable(input, recordId, classCode, oldVal) {
+  const val = input.value === "" ? 0 : parseInt(input.value) || 0;
+  if (val === oldVal) return;
+  const rec = records.find(r => r.id === recordId);
+  if (rec) rec["Min Viable"] = val;
+  const dot = document.createElement("span");
+  dot.className = "saving-dot";
+  input.parentNode.appendChild(dot);
+  saveToAirtable(recordId, { "Min Viable": val }).then(() => {
+    dot.remove();
+    renderTable();
+  });
+}
+
+// ── FILE UPLOAD ───────────────────────────────────────────────────
+function setUploadTab(mode) {
+  uploadMode = mode;
+  document.getElementById("tab-enr").className = "upload-tab" + (mode==="enrollment"?" active":"");
+  document.getElementById("tab-full").className = "upload-tab" + (mode==="full"?" active":"");
+  document.getElementById("tab-url").className = "upload-tab" + (mode==="url"?" active":"");
+  document.getElementById("upload-hint-enr").style.display = mode==="enrollment"?"":"none";
+  document.getElementById("upload-hint-full").style.display = mode==="full"?"":"none";
+  document.getElementById("upload-hint-url").style.display = mode==="url"?"":"none";
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+  e.target.value = "";
+}
+
+function processFile(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".csv")) {
+    const reader = new FileReader();
+    reader.onload = e => parseAndImport(Papa.parse(e.target.result, { header:true, skipEmptyLines:true }).data);
+    reader.readAsText(file);
+  } else if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const wb = XLSX.read(e.target.result, { type:"array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      parseAndImport(XLSX.utils.sheet_to_json(ws, { defval:"" }));
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    showUploadResult("error", "Please upload a .csv, .xlsx, or .xls file.");
+  }
+}
+
+async function parseAndImport(rows) {
+  if (!rows.length) { showUploadResult("error", "File appears to be empty."); return; }
+  const normalize = k => k.trim().toLowerCase();
+  const get = (row, key) => { const found = Object.keys(row).find(k => normalize(k) === normalize(key)); return found ? String(row[found]) : ""; };
+
+  // URL upload mode — matches on Camp Code, updates all classes sharing it
+  if (uploadMode === "url") {
+    const cols = Object.keys(rows[0]);
+    const hasCampCode = cols.some(c => normalize(c) === "camp code");
+    const hasCampURL = cols.some(c => normalize(c) === "camp url");
+    if (!hasCampCode || !hasCampURL) { showUploadResult("error", 'File must have "Camp Code" and "Camp URL" columns.'); return; }
+    let updated = 0, errors = [];
+    const campCodeToURL = {};
+    rows.forEach(row => { const cc = get(row,"Camp Code").trim(); const url = get(row,"Camp URL").trim(); if(cc && url) campCodeToURL[cc] = url; });
+    const toUpdate = [];
+    records.forEach(r => { const url = campCodeToURL[r["Camp Code"]]; if(url) toUpdate.push({ id: r.id, fields: { "Camp URL": url } }); });
+    const tableName = encodeURIComponent(airtableConfig.table || "Classes");
+    for (let i = 0; i < toUpdate.length; i += 10) {
+      const batch = toUpdate.slice(i, i+10);
+      try {
+        const res = await fetch(`https://api.airtable.com/v0/${airtableConfig.base}/${tableName}`, {
+          method: "PATCH", headers: { Authorization: `Bearer ${airtableConfig.token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ records: batch }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        batch.forEach(b => { const rec = records.find(r=>r.id===b.id); if(rec) rec["Camp URL"]=b.fields["Camp URL"]; updated++; });
+      } catch(e) { errors.push(e.message); }
+    }
+    showUploadResult(errors.length?"error":"success", `Updated Camp URL for ${updated} classes across ${Object.keys(campCodeToURL).length} camp codes.${errors.length?" Errors: "+errors[0]:""}`);
+    renderTable();
+    return;
+  }
+
+  const cols = Object.keys(rows[0]);
+  const hasClassCode = cols.some(c => c.trim().toLowerCase() === "class code");
+  if (!hasClassCode) { showUploadResult("error", 'File must have a "Class Code" column.'); return; }
+  let updated = 0, created = 0, errors = [];
+  const toUpdate = [], toCreate = [];
+  for (const row of rows) {
+    const code = get(row, "Class Code").trim();
+    if (!code) continue;
+    const airtableId = recordIdMap[code];
+    const fields = { "Class Code": code };
+    const enrVal = get(row, "Enrollment");
+    if (enrVal !== "") fields["Enrollment"] = parseInt(enrVal) || 0;
+    if (uploadMode === "full") {
+      const maxVal = get(row, "Min Viable");
+      if (maxVal !== "") fields["Min Viable"] = parseInt(maxVal) || 0;
+      ["Class Name","Camp Code","Sport","Director","Sport Manager","Begin Date","Camp URL"].forEach(f => {
+        const v = get(row, f); if (v !== "") fields[f] = v;
+      });
+    }
+    if (airtableId) { toUpdate.push({ id: airtableId, fields }); }
+    else if (uploadMode === "full") { toCreate.push({ fields }); }
+  }
+  const tableName = encodeURIComponent(airtableConfig.table || "Classes");
+  for (let i = 0; i < toCreate.length; i += 10) {
+    const batch = toCreate.slice(i, i + 10);
+    try {
+      const res = await fetch(`https://api.airtable.com/v0/${airtableConfig.base}/${tableName}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${airtableConfig.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ records: batch }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      data.records.forEach(r => {
+        recordIdMap[r.fields["Class Code"]] = r.id;
+        records.push({ id: r.id, "Class Code": r.fields["Class Code"]||"", "Camp Code": r.fields["Camp Code"]||"", "Class Name": r.fields["Class Name"]||"", "Sport": r.fields["Sport"]||"", "Director": r.fields["Director"]||"", "Sport Manager": r.fields["Sport Manager"]||"", "Begin Date": r.fields["Begin Date"]||"", "Min Viable": r.fields["Min Viable"]||0, "Enrollment": r.fields["Enrollment"]||0, "Camp Status": r.fields["Camp Status"] ? String(r.fields["Camp Status"]) : "", "Camp Notes": r.fields["Camp Notes"]||"", "Camp URL": r.fields["Camp URL"]||"" });
+        created++;
+      });
+    } catch(e) { errors.push("Create error: " + e.message); }
+  }
+  for (let i = 0; i < toUpdate.length; i += 10) {
+    const batch = toUpdate.slice(i, i + 10);
+    try {
+      const res = await fetch(`https://api.airtable.com/v0/${airtableConfig.base}/${tableName}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${airtableConfig.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ records: batch }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      batch.forEach(b => { const rec = records.find(r => r.id === b.id); if (rec) Object.assign(rec, b.fields); updated++; });
+    } catch(e) { errors.push("Update error: " + e.message); }
+  }
+  let msg = "";
+  if (created > 0) msg += `Created ${created} new class${created!==1?"es":""}.  `;
+  if (updated > 0) msg += `Updated ${updated} existing class${updated!==1?"es":""}.`;
+  if (!created && !updated && !errors.length) msg = "No changes made — check that your file is on the Full data load tab and has a Class Code column.";
+  if (errors.length) msg += `  Warning: ${errors[0]}`;
+  showUploadResult(errors.length ? "error" : "success", msg);
+  renderTable();
+}
+
+function showUploadResult(type, msg) {
+  const el = document.getElementById("upload-result");
+  el.className = "upload-result " + type;
+  el.textContent = msg;
+  el.style.display = "block";
+  setTimeout(() => el.style.display = "none", 8000);
+}
+
+// ── IMPORT TOGGLE ────────────────────────────────────────────────
+function toggleImport() {
+  const toggle = document.getElementById("import-toggle");
+  const section = document.getElementById("upload-section");
+  const isOpen = section.style.display !== "none";
+  section.style.display = isOpen ? "none" : "";
+  toggle.classList.toggle("open", !isOpen);
+}
+
+// ── AI EMAIL MODAL ───────────────────────────────────────────────
+let currentCampContext = {};
+let currentEmailType = "friend";
+
+function openAiModal(event, campCode, campName, director, sport, date, enrolled, minViable, campURL) {
+  event.stopPropagation();
+  currentCampContext = { campCode, campName: campName || campCode, director, sport, date, enrolled, minViable, campURL: campURL || "" };
+  currentEmailType = "friend";
+  document.getElementById("ai-modal").classList.add("open");
+  document.getElementById("ai-modal-title").textContent = "Draft outreach — " + (campName || campCode);
+  document.getElementById("ai-camp-info").textContent = (campName || campCode) + " · " + director + " · " + formatDate(date);
+  document.getElementById("ai-output").value = "";
+  document.getElementById("copy-btn").textContent = "Copy to clipboard";
+  document.getElementById("copy-btn").classList.remove("copied");
+  document.querySelectorAll(".ai-type-btn").forEach((b,i) => b.classList.toggle("active", i===0));
+  setPromptText();
+}
+
+function closeAiModal() {
+  document.getElementById("ai-modal").classList.remove("open");
+  document.getElementById("ai-output").value = "";
+  document.getElementById("copy-btn").textContent = "Copy prompt";
+  document.getElementById("copy-btn").classList.remove("copied");
+}
+
+function setEmailType(type, btn) {
+  currentEmailType = type;
+  document.querySelectorAll(".ai-type-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  document.getElementById("copy-btn").textContent = "Copy prompt";
+  document.getElementById("copy-btn").classList.remove("copied");
+  setPromptText();
+}
+
+function buildPrompt() {
+  const { campCode, campName, director, sport, date, enrolled, minViable, campURL } = currentCampContext;
+  const gap = Math.max(0, minViable - enrolled);
+  const campDate = formatDate(date);
+  const regLink = campURL ? campURL : "[REGISTRATION LINK — add Camp URL to this record]";
+
+  const prompts = {
+    friend: `You are helping a US Sports Camps sport manager write a marketing email. Please write a short, friendly email to currently enrolled campers for the upcoming ${sport} camp.
+
+Camp details:
+- Camp name: ${campName}
+- Director: ${director}
+- Sport: ${sport}
+- Camp begins: ${campDate} (multi-day camp — exact dates are on the camp webpage)
+- Registration link: ${regLink}
+
+Email goal: Promote a "Bring a Friend" offer — if an enrolled camper refers a friend who registers, both receive a discount. Encourage them to share the camp with teammates, friends, and family. Focus on the quality of the camp experience and the fun of attending with a friend.
+
+Important: Do not mention enrollment numbers, how many spots are left, or anything that implies the camp is struggling to fill. Keep the tone positive, warm, and focused on the experience.
+
+Please write a compelling email with a subject line.`,
+
+    coach: `You are helping a US Sports Camps sport manager write an outreach email. Please write a professional email to local middle school and high school coaches, travel ball teams, and youth sports organizations.
+
+Camp details:
+- Camp name: ${campName}
+- Director: ${director}
+- Sport: ${sport}
+- Camp begins: ${campDate} (multi-day camp — exact dates are on the camp webpage)
+- Registration link: ${regLink}
+
+Email goal: Invite their athletes to attend this camp. Highlight the value for player development, skill building, and competition. Mention that group and team discounts are available. Include a clear call to action to register or visit the camp webpage for full details.
+
+Important: Do not mention enrollment numbers or imply the camp needs more registrations. Focus on the opportunity and value for their athletes.
+
+Please write a compelling email with a subject line. Keep the tone professional but enthusiastic.`,
+
+    director: `You are helping a US Sports Camps sport manager write an internal coaching email to a camp director. Please write a motivating but firm message.
+
+Camp details:
+- Camp name: ${campName}
+- Director: ${director}
+- Sport: ${sport}
+- Camp begins: ${campDate} (multi-day camp — exact dates are on the camp webpage)
+- Registration link for them to share: ${regLink}
+
+Email goal: Encourage ${director} to take immediate local marketing action including: posting on social media (with the registration link), sharing on their school or club website, emailing former players and coaching contacts directly, distributing flyers, and putting up yard signs. Make clear the camp is at risk of cancellation if registration numbers don't improve, but keep this messaging internal — do not suggest they share this concern publicly.
+
+Please write a supportive but urgent email with a subject line. The tone should be like a helpful colleague pushing them to act, not a reprimand.`,
+
+    pastcamper: `You are helping a US Sports Camps sport manager write a re-engagement email for a HubSpot campaign. Please write an email to past campers who have previously attended a ${sport} camp in this area.
+
+Camp details:
+- Camp name: ${campName}
+- Director: ${director}
+- Sport: ${sport}
+- Camp begins: ${campDate} (multi-day camp — exact dates are on the camp webpage)
+- Registration link: ${regLink}
+
+Email goal: Re-engage past attendees and get them to register again. Remind them of the great experience they had at camp. Highlight the multi-day format and everything they'll get out of it. Mention returning camper discounts or early registration incentives.
+
+Important: Do not mention enrollment numbers or imply spots are limited due to low registration. If creating urgency, tie it to registration deadlines or the camp date approaching — not to enrollment levels.
+
+Please write an engaging email with a subject line. This will be sent via HubSpot to a segmented list of past campers in this area. Keep the tone exciting and nostalgic.`,
+  };
+
+  return prompts[currentEmailType] || "";
+}
+
+function setPromptText() {
+  const output = document.getElementById("ai-output");
+  output.value = buildPrompt();
+}
+
+function copyPrompt() {
+  const text = document.getElementById("ai-output").value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById("copy-btn");
+    btn.textContent = "✓ Copied!";
+    btn.classList.add("copied");
+    setTimeout(() => { btn.textContent = "Copy prompt"; btn.classList.remove("copied"); }, 3000);
+  });
+}
+
+// Close modal on overlay click
+document.getElementById("ai-modal").addEventListener("click", function(e) {
+  if (e.target === this) closeAiModal();
+});
+
+// ── COLUMN RESIZING ──────────────────────────────────────────────
+(function() {
+  let startX, startW, th;
+  function initResizers() {
+    document.querySelectorAll('.col-resizer').forEach(resizer => {
+      resizer.addEventListener('mousedown', function(e) {
+        th = this.parentElement;
+        startX = e.pageX;
+        startW = th.offsetWidth;
+        this.classList.add('dragging');
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        e.preventDefault();
+      });
+    });
+  }
+  function onMouseMove(e) {
+    if (!th) return;
+    const newW = Math.max(50, startW + (e.pageX - startX));
+    th.style.width = newW + 'px';
+    th.style.minWidth = newW + 'px';
+  }
+  function onMouseUp() {
+    if (th) {
+      th.querySelector('.col-resizer') && th.querySelector('.col-resizer').classList.remove('dragging');
+      th = null;
+    }
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+  // Re-init after every render
+  const origRender = window.renderTable;
+  window.renderTable = function() {
+    origRender();
+    setTimeout(initResizers, 50);
+  };
+  document.addEventListener('DOMContentLoaded', () => setTimeout(initResizers, 200));
+})();
+</script>
+</body>
+</html>
