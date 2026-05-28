@@ -402,11 +402,13 @@ function launchApp() {
     document.getElementById("settings-btn").style.display = "";
     document.getElementById("upload-wrapper").style.display = "";
   }
-  // Base is hardcoded — always try to load. Token needed for writes (editor only)
-  if (!airtableConfig.token) {
-    if (accessLevel === "editor") {
-      document.getElementById("config-banner").style.display = "block";
-    }
+  // Viewers get read-only token automatically
+  if (accessLevel === "viewer" && !airtableConfig.token) {
+    airtableConfig.token = "pat1xm13wxp1lnzCM.024994d8111f3e9d352521466dcde7312e6be6ddbbcbfeecd8878ecca8516b35";
+  }
+  // Editors need to set their own write token via Settings
+  if (accessLevel === "editor" && !airtableConfig.token) {
+    document.getElementById("config-banner").style.display = "block";
   }
   loadFromAirtable();
 }
