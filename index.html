@@ -241,12 +241,14 @@
     </div>
 
     <!-- SUMMARY -->
-    <div class="summary-row" id="summary-row" style="grid-template-columns:repeat(5,1fr)">
+    <div class="summary-row" id="summary-row" style="grid-template-columns:repeat(7,1fr)">
       <div class="sum-card"><div class="sum-label">Total classes</div><div class="sum-val" id="s-total">—</div></div>
+      <div class="sum-card"><div class="sum-label">Total camps</div><div class="sum-val" id="s-camps">—</div></div>
       <div class="sum-card"><div class="sum-label">Camp weeks</div><div class="sum-val" id="s-weeks">—</div></div>
-      <div class="sum-card"><div class="sum-label">Viable</div><div class="sum-val" id="s-viable" style="color:#3B6D11">—</div><div class="sum-pct" id="s-viable-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
-      <div class="sum-card"><div class="sum-label">At risk</div><div class="sum-val" id="s-atrisk" style="color:#A32D2D">—</div><div class="sum-pct" id="s-atrisk-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
-      <div class="sum-card"><div class="sum-label">Cancelled</div><div class="sum-val" id="s-cancelled" style="color:#791F1F">—</div><div class="sum-pct" id="s-cancelled-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
+      <div class="sum-card"><div class="sum-label">Viable classes</div><div class="sum-val" id="s-viable" style="color:#3B6D11">—</div><div class="sum-pct" id="s-viable-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
+      <div class="sum-card"><div class="sum-label">At risk classes</div><div class="sum-val" id="s-atrisk" style="color:#A32D2D">—</div><div class="sum-pct" id="s-atrisk-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
+      <div class="sum-card"><div class="sum-label">Cancelled classes</div><div class="sum-val" id="s-cancelled" style="color:#791F1F">—</div><div class="sum-pct" id="s-cancelled-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
+      <div class="sum-card"><div class="sum-label">Cancelled camps</div><div class="sum-val" id="s-cancelled-camps" style="color:#791F1F">—</div></div>
     </div>
 
     <!-- TOOLBAR -->
@@ -658,12 +660,34 @@ function renderTable() {
   const atRiskCount = filtered.filter(r=>r["Camp Status"]==="At risk").length;
   const cancelledCount = filtered.filter(r=>r["Camp Status"]==="Cancelled").length;
   const pct = (n) => total > 0 ? " (" + Math.round(n/total*100) + "%)" : "";
+
+  // Total unique camp codes in filtered view
+  const uniqueCampCodes = new Set(filtered.map(r=>r["Camp Code"])).size;
+
+  // Cancelled camps: camp codes where ALL classes across the entire dataset
+  // sharing that camp code are Cancelled (unset counts as not cancelled)
+  const campCodeGroups = {};
+  records.forEach(r => {
+    if (!campCodeGroups[r["Camp Code"]]) campCodeGroups[r["Camp Code"]] = [];
+    campCodeGroups[r["Camp Code"]].push(r["Camp Status"]);
+  });
+  // Only count camp codes that appear in the filtered view
+  const filteredCampCodes = new Set(filtered.map(r=>r["Camp Code"]));
+  let cancelledCampsCount = 0;
+  filteredCampCodes.forEach(code => {
+    const allStatuses = campCodeGroups[code] || [];
+    const allCancelled = allStatuses.length > 0 && allStatuses.every(s => s === "Cancelled");
+    if (allCancelled) cancelledCampsCount++;
+  });
+
+  document.getElementById("s-camps").textContent = uniqueCampCodes;
   document.getElementById("s-viable").textContent = viableCount;
   document.getElementById("s-viable-pct").textContent = pct(viableCount);
   document.getElementById("s-atrisk").textContent = atRiskCount;
   document.getElementById("s-atrisk-pct").textContent = pct(atRiskCount);
   document.getElementById("s-cancelled").textContent = cancelledCount;
   document.getElementById("s-cancelled-pct").textContent = pct(cancelledCount);
+  document.getElementById("s-cancelled-camps").textContent = cancelledCampsCount;
 
   // Render rows
   const isEditor = accessLevel === "editor";
