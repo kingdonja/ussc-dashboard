@@ -248,7 +248,7 @@
       <div class="sum-card"><div class="sum-label">Viable classes</div><div class="sum-val" id="s-viable" style="color:#3B6D11">—</div><div class="sum-pct" id="s-viable-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
       <div class="sum-card"><div class="sum-label">At risk classes</div><div class="sum-val" id="s-atrisk" style="color:#A32D2D">—</div><div class="sum-pct" id="s-atrisk-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
       <div class="sum-card"><div class="sum-label">Cancelled classes</div><div class="sum-val" id="s-cancelled" style="color:#791F1F">—</div><div class="sum-pct" id="s-cancelled-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
-      <div class="sum-card"><div class="sum-label">Cancelled camps</div><div class="sum-val" id="s-cancelled-camps" style="color:#791F1F">—</div></div>
+      <div class="sum-card"><div class="sum-label">Cancelled camps</div><div class="sum-val" id="s-cancelled-camps" style="color:#791F1F">—</div><div class="sum-pct" id="s-cancelled-camps-pct" style="font-size:12px;color:#888;margin-top:2px"></div></div>
     </div>
 
     <!-- TOOLBAR -->
@@ -688,6 +688,7 @@ function renderTable() {
   document.getElementById("s-cancelled").textContent = cancelledCount;
   document.getElementById("s-cancelled-pct").textContent = pct(cancelledCount);
   document.getElementById("s-cancelled-camps").textContent = cancelledCampsCount;
+  document.getElementById("s-cancelled-camps-pct").textContent = uniqueCampCodes > 0 ? "(" + Math.round(cancelledCampsCount/uniqueCampCodes*100) + "%)" : "";
 
   // Render rows
   const isEditor = accessLevel === "editor";
